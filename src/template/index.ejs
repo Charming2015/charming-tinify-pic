@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document</title>
+  <script src="https://cdn.jsdelivr.net/npm/vue@2.6.12"></script>
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+  <!-- 引入样式 -->
+  <link rel="stylesheet" href="https://unpkg.com/element-ui/lib/theme-chalk/index.css">
+  <!-- 引入组件库 -->
+  <script src="https://unpkg.com/element-ui/lib/index.js"></script>
+  <style>
+.img-style{
+  width: 100%;
+}
+body, html, #app {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+.center-child {
+  width: 100%;
+  display:flex;
+  justify-content: center;
+}
+.upload-box{
+  width: calc(80% - 10px);
+}
+.upload-box .el-upload,
+.upload-box .el-upload .el-upload-dragger {
+  width: 100%;
+}
+.imgbox {
+  width: calc(40% - 10px);
+  margin: 0 10px;
+}
+.pic-box {
+  width: 100%;
+  padding: 10px;
+  box-sizing: border-box;
+  border: 1px solid #ddd;
+  min-height: 100px;
+  border-radius: 5px;
+  text-align: center;
+  align-items: center;
+  display: flex;
+  justify-content: center;
+}
+.result-text b{
+  font-size: 22px;
+}
+
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div>
+      <p style="font-size:12px;color: #666;">本系统基于 <a href="https://tinypng.com/">tinify</a> 实现，免费用户每月使用次数限制500次，现剩余次数：{{leftTimes}}</p>
+      <p v-if="!leftTimes" style="color: red;font-size:20px">本月使用次数达到上限，请下个月再试！</p>
+      <div class="center-child">
+        <el-upload
+          class="upload-box"
+          drag
+          name="<%= FORM_ITEM_NAME %>"
+          action="/upload"
+          :auto-upload="false"
+          :http-request="uploadFile"
+          ref="upload"
+          :on-change="handleChange"
+          :multiple="false"
+          :show-file-list="false"
+          :disabled="!leftTimes"
+          :file-list="fileList"
+          >
+          <i class="el-icon-upload"></i>
+          <div class="el-upload__text">将文件拖到此处，或<em>点击上传</em></div>
+          <div class="el-upload__tip" slot="tip">只能上传{{accept.join('/')}}文件</div>
+        </el-upload>
+      </div>
+      <div class="center-child" style="margin-top: 20px">
+        <el-button
+          size="large"
+          type="primary"
+          :disabled="!leftTimes || !fileList.length"
+          @click="submitUpload"
+
+        >上传到服务器</el-button>
+        <el-button
+          :disabled="!success"
+          type="success"
+          style="margin-left: 30px;"
+          @click="download"
+        >下载图片</el-button>
+      </div>
+      <div v-if="success" class="center-child">
+        <p class="result-text">压缩前： <b>{{compData.originSize}}</b>，
+          压缩后：<b>{{compData.compSize}}</b>，
+          压缩率：<b>{{compData.ratio}}</b></p>
+      </div>
+      <div class="center-child" style="margin-top: 10px">
+        <div class="imgbox">
+          <p>压缩前:</p>
+          <div class="pic-box">
+            <img class="img-style" v-if="preSrc" :src="preSrc" alt="preSrc">
+            <p v-else>暂无图片</p>
+          </div>
+        </div>
+        <div class="imgbox">
+          <p>压缩后:</p>
+          <div class="pic-box">
+            <img class="img-style" v-if="compressedSrc" :src="compressedSrc" alt="">
+            <p v-else>暂无图片</p>
+          </div>
+          
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+function formatFileSize(value) {
+  if(null==value||value==''){
+    return "0 Bytes";
+  }
+  var unitArr = new Array("Bytes","KB","MB","GB","TB","PB","EB","ZB","YB");
+  var index=0;
+  var srcsize = parseFloat(value);
+  index=Math.floor(Math.log(srcsize)/Math.log(1024));
+  var size =srcsize/Math.pow(1024,index);
+  size=size.toFixed(2);//保留的小数位数
+  return size+unitArr[index];
+}
+const downloadFile = (url, fileName = '') => {
+  let eleLink = document.createElement('a');
+  eleLink.download = fileName;
+  eleLink.style.display = 'none';
+  eleLink.href = url;
+  // 受浏览器安全策略的因素，动态创建的元素必须添加到浏览器后才能实施点击
+  document.body.appendChild(eleLink);
+  // 触发点击  
+  eleLink.click();
+  // 然后移除
+  document.body.removeChild(eleLink);
+};
+
+const accept = ['jpg', 'jpeg', 'png', 'svg', 'bmp', 'tif', 'webp']
+var vm = new Vue({
+  el: '#app',
+  data() {
+    return {
+      leftTimes: -1,
+      fileList: [],
+      preSrc: '',
+      compressedSrc: '',
+      resultFile: {},
+      success: false,
+      accept,
+      compData: {}
+    }
+  },
+  methods: {
+    handleChange(file, list) {
+      let _self = this
+      this.fileList = [file]
+      if (!this.accept.map(o => `image/${o}`).includes(file.raw.type)) {
+        this.$message.error(`文件格式错误, 仅接受${this.accept.join('/')}文件`)
+        return false
+      }
+      var reader = new FileReader()
+      reader.onload = function (e) {
+        _self.preSrc = e.target.result
+      }
+      reader.readAsDataURL(file.raw);
+    },
+    submitUpload() {
+      this.$refs.upload.submit();
+    },
+    download() {
+      downloadFile(this.resultFile.url, this.resultFile.filename)
+    },
+    uploadFile() {
+      let formdata = new FormData()
+      formdata.append('pic', this.fileList[0].raw)
+      const loadingService = this.$loading({
+        lock: true,
+        fullscreen: true,
+        text: '正在压缩...',
+        spinner: 'el-icon-loading',
+      });
+      axios.post('/upload', formdata, {
+        headers: {
+          'Content-Type': 'multipart/form-data;charset=UTF-8'
+        }
+      }).then(res => {
+        const {
+          size,
+          compressedSize,
+          url
+        } = res.data.file
+        this.compressedSrc = url
+        const originSize = formatFileSize(size)
+        const compSize = formatFileSize(compressedSize)
+        const ratio = `${Math.round((compressedSize / size) * 10000)/100}%`
+        
+        this.success = true
+        this.resultFile = res.data.file
+        this.compData = {
+          originSize,
+          compSize,
+          ratio
+        }
+        loadingService.close()
+      })
+    }
+  },
+  mounted() {
+    axios.get('./leftTimes').then(res => {
+      this.leftTimes = res.data.leftTimes
+    })
+  }
+})
+
+  </script>
+</body>
+</html>

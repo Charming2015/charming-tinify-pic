@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document</title>
+</head>
+<body>
+  <p>上传成功<%= file.filename %></p>
+  <a href="/">返回首页</a>
+  <img src="<%= file._path %>" alt="img" style="max-width:800px;"/>
+  <a href="<%= file._path %>" download="<%= file.filename %>">下载图片</>
+</body>
+</html>
